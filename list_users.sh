@@ -22,23 +22,28 @@ function github_api_get {
     local endpoint="$1"
     local url="${API_URL}/${endpoint}"
 
-    # Send a GET request with basic auth
-    curl -s -u "${USERNAME}:${TOKEN}" "$url"
+    # Send a GET request with basic auth and capture HTTP status
+    response=$(curl -s -w "%{http_code}" -u "${USERNAME}:${TOKEN}" "$url")
+    http_status="${response: -3}"
+    body="${response::-3}"
+
+    echo "$http_status"
+    echo "$body"
 }
 
 # Function to list users with read access to the repository
 function list_users_with_read_access {
     local endpoint="repos/${REPO_OWNER}/${REPO_NAME}/collaborators"
-    local response="$(github_api_get "$endpoint")"
+    read http_status response <<< "$(github_api_get "$endpoint")"
 
-    # Validate JSON response
-    if ! echo "$response" | jq empty 2>/dev/null; then
-        echo "Error: Invalid response from GitHub API."
-        echo "$response"
+    # Check for successful response
+    if [[ "$http_status" != "200" ]]; then
+        echo "GitHub API error (HTTP $http_status):"
+        echo "$response" | jq -r '.message // "Unknown error."'
         return 1
     fi
 
-    # Extract collaborators with read (pull) access
+    # Parse collaborators safely
     collaborators="$(echo "$response" | jq -r '.[]? | select(.permissions?.pull == true) | .login')"
 
     if [[ -z "$collaborators" ]]; then
