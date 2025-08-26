@@ -1,51 +1,33 @@
 #!/bin/bash
 
-# GitHub API base URL
+# GitHub API URL
 API_URL="https://api.github.com"
 
-# GitHub credentials (set these as environment variables or replace with actual values)
-USERNAME="${username:-your_github_username}"
-TOKEN="${token:-your_personal_access_token}"
+# GitHub username and personal access token
+USERNAME=$username
+TOKEN=$token
 
-# Repository owner and name from arguments
-REPO_OWNER="$1"
-REPO_NAME="$2"
-
-# Validate input arguments
-if [[ -z "$REPO_OWNER" || -z "$REPO_NAME" ]]; then
-    echo "Usage: $0 <repo_owner> <repo_name>"
-    exit 1
-fi
+# User and Repository information
+REPO_OWNER=$1
+REPO_NAME=$2
 
 # Function to make a GET request to the GitHub API
 function github_api_get {
     local endpoint="$1"
     local url="${API_URL}/${endpoint}"
 
-    # Send a GET request with basic auth and capture HTTP status
-    response=$(curl -s -w "%{http_code}" -u "${USERNAME}:${TOKEN}" "$url")
-    http_status="${response: -3}"
-    body="${response::-3}"
-
-    echo "$http_status"
-    echo "$body"
+    # Send a GET request to the GitHub API with authentication
+    curl -s -u "${USERNAME}:${TOKEN}" "$url"
 }
 
 # Function to list users with read access to the repository
 function list_users_with_read_access {
     local endpoint="repos/${REPO_OWNER}/${REPO_NAME}/collaborators"
-    read http_status response <<< "$(github_api_get "$endpoint")"
 
-    # Check for successful response
-    if [[ "$http_status" != "200" ]]; then
-        echo "GitHub API error (HTTP $http_status):"
-        echo "$response" | jq -r '.message // "Unknown error."'
-        return 1
-    fi
+    # Fetch the list of collaborators on the repository
+    collaborators="$(github_api_get "$endpoint" | jq -r '.[] | select(.permissions.pull == true) | .login')"
 
-    # Parse collaborators safely
-    collaborators="$(echo "$response" | jq -r '.[]? | select(.permissions?.pull == true) | .login')"
-
+    # Display the list of collaborators with read access
     if [[ -z "$collaborators" ]]; then
         echo "No users with read access found for ${REPO_OWNER}/${REPO_NAME}."
     else
@@ -54,6 +36,7 @@ function list_users_with_read_access {
     fi
 }
 
-# Main execution
+# Main script
+
 echo "Listing users with read access to ${REPO_OWNER}/${REPO_NAME}..."
 list_users_with_read_access
